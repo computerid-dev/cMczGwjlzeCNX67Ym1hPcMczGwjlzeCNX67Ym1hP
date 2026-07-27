@@ -1,0 +1,13 @@
+{
+  "name": "echonote-admin",
+  "version": "1.0.0",
+  "description": "EchoNote Admin Panel - kelola pengguna, moderasi post, dan antrean pendaftaran/login. Serverless (Vercel) + Firebase Firestore. Deploy TERPISAH dari EchoNote utama, tidak untuk publik.",
+  "private": true,
+  "engines": {
+    "node": ">=18"
+  },
+  "dependencies": {
+    "firebase-admin": "^12.1.0",
+    "@vercel/edge": "^1.1.1"
+  }
+}
