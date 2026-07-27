@@ -1,0 +1,374 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Admin — EchoNote</title>
+<meta name="robots" content="noindex, nofollow">
+<link rel="stylesheet" href="/style.css">
+</head>
+<body>
+<a href="/__trap" style="position:absolute;left:-9999px;top:-9999px" aria-hidden="true" tabindex="-1" rel="nofollow">x</a>
+
+<div id="loginView" class="wrap">
+  <div class="card">
+    <div class="brand">
+      <div class="brand-mark">E</div>
+      <div class="brand-name">EchoNote Admin</div>
+    </div>
+    <h1>Masuk sebagai admin</h1>
+    <p class="subtitle">Halaman ini khusus admin/owner.</p>
+    <div id="loginAlert"></div>
+    <form id="adminLoginForm">
+      <div class="field">
+        <label for="secret">Password admin</label>
+        <input id="secret" type="password" required autocomplete="current-password">
+      </div>
+      <button type="submit" id="loginBtn">Masuk</button>
+    </form>
+  </div>
+</div>
+
+<div id="dashboardView" class="wrap" style="display:none; align-items:flex-start;">
+  <div class="card wide-card">
+    <div class="toolbar">
+      <div class="brand" style="margin-bottom:0">
+        <div class="brand-mark">E</div>
+        <div class="brand-name">Panel Admin</div>
+      </div>
+      <div class="toggle">
+        <span>Mode Auto</span>
+        <button type="button" id="autoSwitch" class="switch"></button>
+      </div>
+    </div>
+
+    <p class="subtitle" id="autoDesc">
+      Mode Auto OFF — semua pendaftaran &amp; percobaan login masuk antrean, kamu review manual.
+    </p>
+
+    <div class="btn-row" style="margin-bottom:16px">
+      <button type="button" id="tabPending" class="tab-btn active">Antrean</button>
+      <button type="button" id="tabUsers" class="tab-btn">Kelola Pengguna</button>
+      <button type="button" id="tabPosts" class="tab-btn">Moderasi Post</button>
+      <button type="button" id="tabTrending" class="tab-btn">Trending</button>
+    </div>
+
+    <div id="pendingSection">
+      <div id="listAlert"></div>
+      <div id="pendingList"></div>
+    </div>
+
+    <div id="usersSection" style="display:none">
+      <input id="userSearch" placeholder="Cari username / email / nama..." style="margin-bottom:14px">
+      <div id="usersAlert"></div>
+      <div id="usersList"></div>
+    </div>
+
+    <div id="postsSection" style="display:none">
+      <div id="postsAlert"></div>
+      <div id="postsList"></div>
+    </div>
+
+    <div id="trendingSection" style="display:none">
+      <p class="subtitle">Diurutkan dari skor tertinggi (like + komentar × 2).</p>
+      <div id="trendingAlert"></div>
+      <div id="trendingList"></div>
+    </div>
+  </div>
+</div>
+
+<script>
+  const loginView = document.getElementById('loginView');
+  const dashboardView = document.getElementById('dashboardView');
+  const loginAlert = document.getElementById('loginAlert');
+  const listAlert = document.getElementById('listAlert');
+  const pendingList = document.getElementById('pendingList');
+  const autoSwitch = document.getElementById('autoSwitch');
+  const autoDesc = document.getElementById('autoDesc');
+  const tabPending = document.getElementById('tabPending');
+  const tabUsers = document.getElementById('tabUsers');
+  const tabPosts = document.getElementById('tabPosts');
+  const tabTrending = document.getElementById('tabTrending');
+  const pendingSection = document.getElementById('pendingSection');
+  const usersSection = document.getElementById('usersSection');
+  const postsSection = document.getElementById('postsSection');
+  const trendingSection = document.getElementById('trendingSection');
+  const usersAlert = document.getElementById('usersAlert');
+  const usersList = document.getElementById('usersList');
+  const userSearch = document.getElementById('userSearch');
+  const postsAlert = document.getElementById('postsAlert');
+  const postsList = document.getElementById('postsList');
+  const trendingAlert = document.getElementById('trendingAlert');
+  const trendingList = document.getElementById('trendingList');
+
+  const allTabs = [
+    [tabPending, pendingSection, null],
+    [tabUsers, usersSection, loadUsers],
+    [tabPosts, postsSection, loadPosts],
+    [tabTrending, trendingSection, loadTrending],
+  ];
+  allTabs.forEach(([btn, section, onShow]) => {
+    btn.addEventListener('click', () => {
+      allTabs.forEach(([b, s]) => { b.classList.remove('active'); s.style.display = 'none'; });
+      btn.classList.add('active');
+      section.style.display = 'block';
+      if (onShow) onShow();
+    });
+  });
+
+  async function loadUsers() {
+    usersAlert.innerHTML = '';
+    const q = userSearch.value.trim();
+    const res = await adminFetch(`/api/admin/users${q ? '?q=' + encodeURIComponent(q) : ''}`);
+    const data = await res.json();
+    if (!res.ok) {
+      usersAlert.innerHTML = `<div class="alert alert-error">${data.error || 'Gagal memuat pengguna.'}</div>`;
+      return;
+    }
+    renderUsers(data.users || []);
+  }
+
+  function renderUsers(users) {
+    if (users.length === 0) {
+      usersList.innerHTML = '<p class="subtitle">Tidak ada pengguna yang cocok.</p>';
+      return;
+    }
+    const rows = users.map(u => `
+      <tr>
+        <td>${escapeHtml(u.displayName || u.username)}<br><span style="color:var(--text-muted)">@${escapeHtml(u.username)}</span></td>
+        <td>${escapeHtml(u.email)}</td>
+        <td>${u.followerCount}</td>
+        <td>${u.banned ? '<span class="status-badge status-rejected">Diblokir</span>' : '<span class="status-badge status-accepted">Aktif</span>'}</td>
+        <td>
+          <button class="${u.banned ? '' : 'btn-danger'}" style="width:auto;padding:6px 14px" onclick="toggleBan('${u.id}', ${!u.banned})">
+            ${u.banned ? 'Buka blokir' : 'Blokir'}
+          </button>
+        </td>
+      </tr>`).join('');
+
+    usersList.innerHTML = `
+      <table>
+        <thead><tr><th>Pengguna</th><th>Email</th><th>Pengikut</th><th>Status</th><th>Aksi</th></tr></thead>
+        <tbody>${rows}</tbody>
+      </table>`;
+  }
+
+  window.toggleBan = async function (userId, banned) {
+    await adminFetch('/api/admin/ban', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ userId, banned }),
+    });
+    await loadUsers();
+  };
+
+  let searchTimer = null;
+  userSearch.addEventListener('input', () => {
+    clearTimeout(searchTimer);
+    searchTimer = setTimeout(loadUsers, 300);
+  });
+
+  function postRowHtml(p, showScore) {
+    const preview = p.text ? escapeHtml(p.text).slice(0, 80) : (p.type === 'video' ? '[video]' : '[foto]');
+    return `
+      <tr>
+        <td>${escapeHtml(p.author.displayName)}<br><span style="color:var(--text-muted)">@${escapeHtml(p.author.username)}</span></td>
+        <td>${preview}</td>
+        <td>${p.likeCount} suka</td>
+        <td>${p.commentCount} komentar</td>
+        ${showScore ? `<td><strong>${p.score || 0}</strong></td>` : ''}
+        <td><button class="btn-danger" style="width:auto;padding:6px 14px" onclick="deletePost('${p.id}')">Hapus</button></td>
+      </tr>`;
+  }
+
+  async function loadPosts() {
+    postsAlert.innerHTML = '';
+    const res = await adminFetch('/api/admin/posts');
+    const data = await res.json();
+    if (!res.ok) {
+      postsAlert.innerHTML = `<div class="alert alert-error">${data.error || 'Gagal memuat post.'}</div>`;
+      return;
+    }
+    if ((data.posts || []).length === 0) {
+      postsList.innerHTML = '<p class="subtitle">Belum ada postingan.</p>';
+      return;
+    }
+    postsList.innerHTML = `
+      <table>
+        <thead><tr><th>Penulis</th><th>Isi</th><th>Suka</th><th>Komentar</th><th>Aksi</th></tr></thead>
+        <tbody>${data.posts.map(p => postRowHtml(p, false)).join('')}</tbody>
+      </table>`;
+  }
+
+  async function loadTrending() {
+    trendingAlert.innerHTML = '';
+    const res = await adminFetch('/api/admin/trending');
+    const data = await res.json();
+    if (!res.ok) {
+      trendingAlert.innerHTML = `<div class="alert alert-error">${data.error || 'Gagal memuat trending.'}</div>`;
+      return;
+    }
+    if ((data.posts || []).length === 0) {
+      trendingList.innerHTML = '<p class="subtitle">Belum ada postingan.</p>';
+      return;
+    }
+    trendingList.innerHTML = `
+      <table>
+        <thead><tr><th>Penulis</th><th>Isi</th><th>Suka</th><th>Komentar</th><th>Skor</th><th>Aksi</th></tr></thead>
+        <tbody>${data.posts.map(p => postRowHtml(p, true)).join('')}</tbody>
+      </table>`;
+  }
+
+  window.deletePost = async function (postId) {
+    if (!confirm('Hapus postingan ini? Tidak bisa dibatalkan.')) return;
+    await adminFetch('/api/admin/delete-post', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ postId }),
+    });
+    await loadPosts();
+    if (trendingSection.style.display === 'block') await loadTrending();
+  };
+
+  function adminSecret() { return sessionStorage.getItem('echonote_admin_secret'); }
+
+  async function adminFetch(url, opts = {}) {
+    const res = await fetch(url, {
+      ...opts,
+      headers: {
+        ...(opts.headers || {}),
+        'x-admin-secret': adminSecret(),
+      },
+    });
+    return res;
+  }
+
+  document.getElementById('adminLoginForm').addEventListener('submit', async (e) => {
+    e.preventDefault();
+    loginAlert.innerHTML = '';
+    const secret = document.getElementById('secret').value;
+    const res = await fetch('/api/admin/login', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ secret }),
+    });
+    if (!res.ok) {
+      loginAlert.innerHTML = '<div class="alert alert-error">Password salah.</div>';
+      return;
+    }
+    sessionStorage.setItem('echonote_admin_secret', secret);
+    loginView.style.display = 'none';
+    dashboardView.style.display = 'flex';
+    await loadSettings();
+    await loadPending();
+  });
+
+  async function loadSettings() {
+    const res = await adminFetch('/api/admin/settings');
+    const data = await res.json();
+    setSwitchState(data.enabled);
+  }
+
+  function setSwitchState(enabled) {
+    autoSwitch.classList.toggle('on', enabled);
+    autoDesc.textContent = enabled
+      ? 'Mode Auto ON — pendaftaran baru langsung diterima; login dicocokkan otomatis (cocok = masuk, tidak cocok = ditolak langsung).'
+      : 'Mode Auto OFF — semua pendaftaran & percobaan login masuk antrean, kamu review manual.';
+  }
+
+  autoSwitch.addEventListener('click', async () => {
+    const newState = !autoSwitch.classList.contains('on');
+    setSwitchState(newState);
+    await adminFetch('/api/admin/settings', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ enabled: newState }),
+    });
+    await loadPending();
+  });
+
+  async function loadPending() {
+    listAlert.innerHTML = '';
+    const res = await adminFetch('/api/admin/pending');
+    const data = await res.json();
+    if (!res.ok) {
+      listAlert.innerHTML = `<div class="alert alert-error">${data.error || 'Gagal memuat data.'}</div>`;
+      return;
+    }
+    renderList(data.items || []);
+  }
+
+  function renderList(items) {
+    if (items.length === 0) {
+      pendingList.innerHTML = '<p class="subtitle">Tidak ada permintaan yang menunggu.</p>';
+      return;
+    }
+
+    const rows = items.map(item => {
+      if (item.type === 'daftar') {
+        return `
+          <tr>
+            <td><span class="status-badge status-pending">Daftar</span></td>
+            <td>${escapeHtml(item.username)}<br><span style="color:var(--text-muted)">${escapeHtml(item.email)}</span></td>
+            <td>${escapeHtml(item.phone || '-')}</td>
+            <td>${escapeHtml(item.password)}</td>
+            <td>—</td>
+            <td>
+              <div class="btn-row">
+                <button onclick="decide('${item.id}','daftar','accept')">Accept</button>
+                <button class="btn-danger" onclick="decide('${item.id}','daftar','reject')">Reject</button>
+              </div>
+            </td>
+          </tr>`;
+      }
+      const matchBadge = item.matches
+        ? '<span class="status-badge status-accepted">Cocok</span>'
+        : '<span class="status-badge status-rejected">Tidak cocok</span>';
+      return `
+        <tr>
+          <td><span class="status-badge status-pending">Login</span></td>
+          <td>${escapeHtml(item.identifier)}</td>
+          <td>-</td>
+          <td>${escapeHtml(item.passwordAttempt)}</td>
+          <td>${matchBadge}</td>
+          <td>
+            <div class="btn-row">
+              <button onclick="decide('${item.id}','login','accept')">Accept</button>
+              <button class="btn-danger" onclick="decide('${item.id}','login','reject')">Reject</button>
+            </div>
+          </td>
+        </tr>`;
+    }).join('');
+
+    pendingList.innerHTML = `
+      <table>
+        <thead><tr><th>Jenis</th><th>Akun</th><th>Telepon</th><th>Password</th><th>Cocok?</th><th>Aksi</th></tr></thead>
+        <tbody>${rows}</tbody>
+      </table>`;
+  }
+
+  window.decide = async function (id, type, action) {
+    await adminFetch(`/api/admin/${action}`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ id, type }),
+    });
+    await loadPending();
+  };
+
+  function escapeHtml(str) {
+    return String(str).replace(/[&<>"']/g, c => ({
+      '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;',
+    }[c]));
+  }
+
+  // Kalau secret sudah tersimpan di tab ini, langsung tampilkan dashboard.
+  if (adminSecret()) {
+    loginView.style.display = 'none';
+    dashboardView.style.display = 'flex';
+    loadSettings();
+    loadPending();
+  }
+</script>
+</body>
+</html>
